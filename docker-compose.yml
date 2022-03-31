@@ -1,0 +1,309 @@
+version: "3"
+
+networks:
+  frontend:
+    driver: ${NETWORKS_DRIVER}
+  backend:
+    driver: ${NETWORKS_DRIVER}
+
+volumes:
+  mysql:
+    driver: ${VOLUMES_DRIVER}
+  mysql5:
+    driver: ${VOLUMES_DRIVER}
+  goLang:
+    driver: ${VOLUMES_DRIVER}
+  nodejs:
+    driver: ${VOLUMES_DRIVER}
+  redis:
+    driver: ${VOLUMES_DRIVER}
+  mongo:
+    driver: ${VOLUMES_DRIVER}
+  elasticsearch:
+    driver: ${VOLUMES_DRIVER}
+  mysql8:
+    driver: ${VOLUMES_DRIVER}
+  java:
+    driver: ${VOLUMES_DRIVER}
+
+services:
+  ### NGINX Server #########################################
+  nginx:
+    build:
+      context: ./nginx
+      args:
+        - CHANGE_SOURCE=${CHANGE_SOURCE}
+        - PHP_UPSTREAM_CONTAINER=${NGINX_PHP_UPSTREAM_CONTAINER}
+        - PHP_UPSTREAM_PORT=${NGINX_PHP_UPSTREAM_PORT}
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    volumes:
+      - ${APP_CODE_PATH_HOST}:${APP_CODE_PATH_CONTAINER}${APP_CODE_CONTAINER_FLAG}
+      - ${NGINX_HOST_LOG_PATH}:/var/log/nginx
+      - ${NGINX_SITES_PATH}:/etc/nginx/sites-available
+      - ${NGINX_SSL_PATH}:/etc/nginx/ssl
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    depends_on:
+      - php-fpm
+    networks:
+      - frontend
+      - backend
+
+  ### Redis ################################################
+  redis:
+    build: ./redis
+    volumes:
+      - ${DATA_PATH_HOST}/redis:/data
+    ports:
+      - "${REDIS_PORT}:6379"
+    networks:
+      - backend
+
+  ### ZooKeeper #########################################
+  zookeeper:
+    build: ./zookeeper
+    volumes:
+      - ${DATA_PATH_HOST}/zookeeper/data:/data
+      - ${DATA_PATH_HOST}/zookeeper/datalog:/datalog
+    ports:
+      - "${ZOOKEEPER_PORT}:2181"
+    networks:
+      - backend
+  ### RabbitMQ #############################################
+  rabbitmq:
+    build: ./rabbitmq
+    ports:
+      - "${RABBITMQ_NODE_HOST_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_HTTP_HOST_PORT}:15672"
+      - "${RABBITMQ_MANAGEMENT_HTTPS_HOST_PORT}:15671"
+    privileged: true
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    hostname: laradock-rabbitmq
+    volumes:
+      - ${DATA_PATH_HOST}/rabbitmq:/var/lib/rabbitmq
+    networks:
+      - backend
+    restart: always
+
+  ### ElasticSearch ########################################
+  elasticsearch:
+    build:
+      context: ./elasticsearch
+      args:
+        - ELK_VERSION=${ELK_VERSION}
+    volumes:
+      - ${DATA_PATH_HOST}/elasticsearch:/usr/share/elasticsearch/data
+      #- ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      #- ./elasticsearch/config/log4j2.properties:/usr/share/elasticsearch/config/log4j2.properties
+    environment:
+      - cluster.name=laradock-cluster
+      - node.name=laradock-node
+      #- node.master=true
+      #- bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      #- cluster.initial_master_nodes=laradock-node
+      #- discovery.seed_hosts=elasticsearch-3,elasticsearch-2
+      #- discovery.zen.ping.unicast.hosts=elasticsearch-3,elasticsearch-2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - frontend
+      - backend
+  ### MySQL ################################################
+  mysql:
+    build:
+      context: ./mysql
+      args:
+        - MYSQL_VERSION=${MYSQL_VERSION}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_ROOT_HOST=%
+      - TZ=${WORKSPACE_TIMEZONE}
+    volumes:
+      - ${DATA_PATH_HOST}/mysql8:/var/lib/mysql
+      - ${MYSQL_ENTRYPOINT_INITDB}:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - backend
+
+  ### kafka ################################################
+  kafka:
+    build:
+      context: ./kafka
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_HEAP_OPTS: -Xmx1G -Xms1G
+    volumes:
+      - ${DATA_PATH_HOST}/kafka:/data
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - backend
+    tty: true
+
+  ### kafka-manager ################################################
+  kafka-manager:
+    build:
+      context: ./kafka-manager
+    environment:
+      ZK_HOSTS: zookeeper:2181
+    ports:
+      - "9900:9000"
+    volumes:
+      - ${DATA_PATH_HOST}/kafka-manager:/cmak/logs
+    depends_on:
+      - zookeeper
+    networks:
+      - backend
+    tty: true
+  ### nodejs ################################################
+  nodejs:
+    build:
+      context: ./nodejs
+    volumes:
+      - ${APP_CODE_PATH_HOST}/vue-element-admin:/var/vue-admin
+    ports:
+      - "9527:9527"
+    networks:
+      - backend
+    tty: true
+
+  ### php-apine ################################################
+  php-fpm:
+    build:
+      context: ./php-fpm
+    volumes:
+      - ${APP_CODE_PATH_HOST}:/var/www/
+    ports:
+      - "9000:9000"
+    networks:
+      - backend
+      - frontend
+    tty: true
+  ### rocketmq ################################################
+  rocketmq:
+    build:
+      context: ./rocketmq
+    environment:
+      NAMESRV_ADDR: rocketmq:9876
+    volumes:
+      - ${DATA_PATH_HOST}/rocketmq:/data
+    ports:
+      - "9876:9876"
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    networks:
+      - backend
+    tty: true
+  ### rocketmq-manage ################################################
+  rocketmq-manager:
+    build:
+      context: ./rocketmq-manager
+    volumes:
+      - ${DATA_PATH_HOST}/rocketmq-manager:/data
+    environment:
+      JAVA_OPTS: "-Drocketmq.namesrv.addr=rocketmq:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false"
+    ports:
+      - "8180:8080"
+    networks:
+      - backend
+    tty: true
+
+  ### java ################################################
+  java:
+    build:
+      context: ./java
+    volumes:
+      - ${APP_CODE_PATH_HOST}/spring:/home/www/spring
+    ports:
+      - "9019:8011"
+    networks:
+      - backend
+      - frontend
+    tty: true
+
+  ### ElasticSearch ########################################
+  elasticsearch-7:
+    build:
+      context: ./elasticsearch-7
+      args:
+        - ELK_VERSION=${ELK_VERSION}
+    volumes:
+      - ${DATA_PATH_HOST}/elasticsearch-7:/usr/share/elasticsearch/data
+      #- ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      #- ./elasticsearch/config/log4j2.properties:/usr/share/elasticsearch/config/log4j2.properties
+    environment:
+      - cluster.name=laradock-cluster7
+      - node.name=laradock-node7
+      - node.master=true
+      #- bootstrap.memory_lock=true
+      #- "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.initial_master_nodes=laradock-node7
+      #- discovery.seed_hosts=elasticsearch-3,elasticsearch-2
+      #- discovery.zen.ping.unicast.hosts=elasticsearch-3,elasticsearch-2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9220:9200"
+      - "9330:9300"
+    networks:
+      - backend
+      - frontend
+
+  ### MongoDB ##############################################
+  mongo:
+    build: ./mongo
+    ports:
+      - "${MONGODB_PORT}:27017"
+    volumes:
+      - ${DATA_PATH_HOST}/mongo:/data/db
+      - ${DATA_PATH_HOST}/mongo_config:/data/configdb
+    networks:
+      - backend
+  ### Redis Cluster ##########################################
+  redis-cluster:
+    build: ./redis-cluster
+    volumes:
+      - ${DATA_PATH_HOST}/redis-cluster:/data
+    ports:
+      - "${REDIS_CLUSTER_PORT_RANGE}:7000-7005"
+    networks:
+      - backend
+      - frontend
+  ### Redis Cluster ##########################################
+  redis-cluster-2:
+    build: ./redis-cluster-2
+    volumes:
+      - ${DATA_PATH_HOST}/redis-cluster-2:/data
+    ports:
+      - "${REDIS_CLUSTER_PORT_RANGE2}:7000-7005"
+    networks:
+      - backend
+      - frontend

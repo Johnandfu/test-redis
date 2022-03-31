@@ -1,0 +1,1 @@
+2022/03/19 02:50:46 [emerg] 10#10: cannot load certificate "/var/www/adyen/example.crt": BIO_new_file() failed (SSL: error:02001002:system library:fopen:No such file or directory:fopen('/var/www/adyen/example.crt','r') error:2006D080:BIO routines:BIO_new_file:no such file)

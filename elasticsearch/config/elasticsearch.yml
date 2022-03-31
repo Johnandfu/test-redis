@@ -1,0 +1,14 @@
+#http.host: 0.0.0.0
+network.host: 0.0.0.0
+
+bootstrap.memory_lock: true
+
+# Cluster settings
+cluster.name: laradock-cluster
+cluster.initial_master_nodes: ["laradock-node","laradock-node2","laradock-node3"]
+
+### x-pack functions
+xpack.security.enabled: false
+xpack.monitoring.enabled: true
+xpack.graph.enabled: true
+xpack.watcher.enabled: false
