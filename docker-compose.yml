@@ -293,6 +293,9 @@ services:
     volumes:
       - ${DATA_PATH_HOST}/redis-cluster:/data
     network_mode: "host"
+    environment:
+      INITIAL_PORT: 6000
+
   ### Redis Cluster ##########################################
   redis-cluster-2:
     build: ./redis-cluster-2
